@@ -1,16 +1,11 @@
 import os
 import pdfplumber
 import re
+import json
 
-file_path ="pdf/"
-files = [x for x in os.listdir(file_path) if x.endswith(".pdf")]
-for file in files:
-    print('-------------------------')
-    print(f'Processing file: {file}')
-    pdf = pdfplumber.open(f'pdf/{file}')
-    page = pdf.pages[0]
-    text = page.extract_text()  
 
+def get_data_header(text):
+    """Extract header data from PDF text"""
     order_id = re.search(r'Purchase\s+Order\s+.*?\n\s*(\d{5,6})', text).group(1)
     purchase_order_no = re.search(r'Purchase\s+Order\s+.*?\n\s*\d{5,6}\s+(\d{10})', text).group(1)
     customer_name = re.search(r'Purchase\s+Order\s+([A-Z\s]+PT)', text).group(1)
@@ -38,7 +33,6 @@ for file in files:
     planned_delv_cost = re.search(r'Delv.\sCost\s:\s(\d+)\s', text).group(1).strip()
     total_include_tax = re.search(r'Total\sInclude\sTax\s:(\d+.\d+.\d+)\s', text).group(1).strip()
 
-
     header_data = {
         "order_id": order_id,
         "purchase_order_no": purchase_order_no,
@@ -63,26 +57,34 @@ for file in files:
         "planned_delv_cost": planned_delv_cost,
         "total_include_tax": total_include_tax
     }
+    
+    return header_data
 
-    
-    # Pattern for get item data
-    item_pattern = r'(\d{8})\s+([A-Z\s\d/]+?)\s+([\d,]+)\s*\n\s*(\d{5})\s+(\d+)\s+(EA)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d,]+)\s*\n\s*(PF\d+)Country of Origin\s*:\s*\w+\s+([\d,]+)'
+
+def get_data_item(text):
+    """Extract item data from PDF text"""
     items = []
-    matches = re.finditer(item_pattern, text, re.MULTILINE)
     
-    for match in matches:
+    # Pattern 1: Format 2 baris (original pattern)
+    # Article + Description + Purc/Unt di baris 1
+    # No + Qty + UOM + Discounts + Total di baris 2 
+    # SKU + Country + Price/Unt di baris 2
+    item_pattern_1 = r'(\d{8})\s+([A-Z\s\d/]+?)\s+([\d,]+)\s*\n\s*(\d{5})\s+(\d+)\s+(EA)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d,]+)\s*\n\s*(PF\d+|[\d]+)\s*Country\s+of\s+Origin\s*:\s*[\w\s]+\s+([\d,]+)'
+    matches_1 = re.finditer(item_pattern_1, text, re.MULTILINE)
+    
+    for match in matches_1:
         article = match.group(1)
         description = match.group(2).strip()
-        purc_price = match.group(3)  # Harga per unit (Purc/Unt)
+        purc_price = match.group(3)
         item_no = match.group(4)
         qty = match.group(5)
-        uom = match.group(6)  # Unit of Measure (EA)
-        discount_1st = match.group(7)  # Discount 1st
-        discount_2nd = match.group(8)  # Discount 2nd
-        discount_3rd = match.group(9)  # Discount 3rd
-        total = match.group(10)  # Total
-        sku = match.group(11)  # SKU (PF...)
-        price_per_unit = match.group(12)  # Price/Unt (harga setelah discount)
+        uom = match.group(6)
+        discount_1st = match.group(7)
+        discount_2nd = match.group(8)
+        discount_3rd = match.group(9)
+        total = match.group(10)
+        sku = match.group(11)
+        price_per_unit = match.group(12)
         
         item_data = {
             "no": item_no,
@@ -98,6 +100,82 @@ for file in files:
             "total": total
         }
         items.append(item_data)
+    
+    # Pattern 2: Format 3 baris (untuk PDF seperti 4503901379)
+    # Baris 1: Article + Description + Purc/Unt
+    # Baris 2: No + Qty + UOM + Discounts + Total
+    # Baris 3: SKU + Country + Price/Unt
+    item_pattern_2 = r'(\d{8})\s+([A-Z\s\d/]+?)\s+([\d,]+)\s*\n\s*(\d{5})\s+(\d+)\s+(EA)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d,]+)\s*\n\s*([\d]+)\s*Country\s+of\s+Origin\s*:\s*[\w\s]+\s+([\d,]+)'
+    matches_2 = re.finditer(item_pattern_2, text, re.MULTILINE)
+    
+    for match in matches_2:
+        article = match.group(1)
+        description = match.group(2).strip()
+        purc_price = match.group(3)
+        item_no = match.group(4)
+        qty = match.group(5)
+        uom = match.group(6)
+        discount_1st = match.group(7)
+        discount_2nd = match.group(8)
+        discount_3rd = match.group(9)
+        total = match.group(10)
+        sku = match.group(11)
+        price_per_unit = match.group(12)
+        
+        item_data = {
+            "no": item_no,
+            "article_sku": article + sku,
+            "description": description,
+            "qty": qty,
+            "uom": uom,
+            "discount_1st": discount_1st,
+            "discount_2nd": discount_2nd,
+            "discount_3rd": discount_3rd,
+            "purc_price": purc_price,
+            "price_per_unit": price_per_unit,
+            "total": total
+        }
+        items.append(item_data)
+    
+    return items
 
-    print(header_data) 
+
+def main():
+    """Main function to process PDF files and save to JSON"""
+    file_path = "pdf/"
+    files = [x for x in os.listdir(file_path) if x.endswith(".pdf")]
+    all_results = []
+    
+    for file in files:
+        print('-------------------------')
+        print(f'Processing file: {file}')
+        
+        pdf = pdfplumber.open(f'pdf/{file}')
+        page = pdf.pages[0]
+        text = page.extract_text()
+        
+        # Get header and item data
+        header_data = get_data_header(text)
+        items = get_data_item(text)
+        
+        # Combine data
+        result = {
+            **header_data,
+            "items": items
+        }
+        
+        all_results.append(result)
+        print(f'Extracted {len(items)} items from {file}')
+    
+    # Save to JSON file
+    output_file = 'output.json'
+    with open(output_file, 'w', encoding='utf-8') as f:
+        json.dump(all_results, f, indent=4, ensure_ascii=False)
+    
+    print(f'\n✓ Data saved to {output_file}')
+    print(f'Total files processed: {len(all_results)}')
+
+
+if __name__ == "__main__":
+    main() 
     
