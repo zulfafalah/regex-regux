@@ -5,11 +5,12 @@ import re
 file_path ="pdf/"
 files = [x for x in os.listdir(file_path) if x.endswith(".pdf")]
 for file in files:
-    # get file name
+    print('-------------------------')
     print(f'Processing file: {file}')
     pdf = pdfplumber.open(f'pdf/{file}')
     page = pdf.pages[0]
     text = page.extract_text()  
+
     order_id = re.search(r'Purchase\s+Order\s+.*?\n\s*(\d{5,6})', text).group(1)
     purchase_order_no = re.search(r'Purchase\s+Order\s+.*?\n\s*\d{5,6}\s+(\d{10})', text).group(1)
     customer_name = re.search(r'Purchase\s+Order\s+([A-Z\s]+PT)', text).group(1)
@@ -32,8 +33,10 @@ for file in files:
     total_qty = re.search(r'Total Quantity+\s:+\s(\d+.\d+\s)', text).group(1).strip()
     total = re.search(r'Total+\s:(\d+.\d+.\d+)\s', text).group(1).strip()
     ppn_bm = re.search(r'PPN-BM+\s:+\s(\d+)\s', text).group(1).strip()
-    ppn = re.search(r'PPN+\s:\s(\d.\d+.\d+)\s', text).group(1).strip()
+    ppn = re.search(r'PPN\s*:\s*([\d.]+)', text).group(1).strip()
     purchasing_group = re.search(r'Puchasing\s+Group\s*:\s*(.*?)\s+Planned', text).group(1).strip()
+    planned_delv_cost = re.search(r'Delv.\sCost\s:\s(\d+)\s', text).group(1).strip()
+    total_include_tax = re.search(r'Total\sInclude\sTax\s:(\d+.\d+.\d+)\s', text).group(1).strip()
 
 
     header_data = {
@@ -51,21 +54,20 @@ for file in files:
         "expiry_date": expiry_date,
         "note": note,
         "prepared_by": prepared_by,
-        "phone_number": phone_number
+        "phone_number": phone_number,
+        "total_qty": total_qty,
+        "total": total,
+        "ppn_bm": ppn_bm,
+        "ppn": ppn,
+        "purchasing_group": purchasing_group,
+        "planned_delv_cost": planned_delv_cost,
+        "total_include_tax": total_include_tax
     }
 
-    # get item data (No, articel sku, description , qty)
-    # Pola untuk menangkap setiap item yang terdiri dari 3 baris:
-    # Baris 1: Article + Description + Purc/Unt (harga per unit)
-    # Baris 2: No + Qty + UoM + Discount 1st, 2nd, 3rd + Total
-    # Baris 3: SKU (PF...) + Country + Price/Unt (harga satuan setelah discount)
     
-    # Pattern untuk menangkap semua data item
+    # Pattern for get item data
     item_pattern = r'(\d{8})\s+([A-Z\s\d/]+?)\s+([\d,]+)\s*\n\s*(\d{5})\s+(\d+)\s+(EA)\s+(\d+)\s+(\d+)\s+(\d+)\s+([\d,]+)\s*\n\s*(PF\d+)Country of Origin\s*:\s*\w+\s+([\d,]+)'
-    
     items = []
-    
-    # Mencari semua item dengan pola lengkap
     matches = re.finditer(item_pattern, text, re.MULTILINE)
     
     for match in matches:
@@ -97,5 +99,5 @@ for file in files:
         }
         items.append(item_data)
 
-    print(items) 
+    print(header_data) 
     
