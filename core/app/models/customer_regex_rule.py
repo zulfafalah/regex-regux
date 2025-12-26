@@ -9,5 +9,6 @@ class CustomerRegexRule(Base):
     customer_id = Column(Integer, index=True)
     customer_name = Column(String)
     pattern = Column(String, index=True)
+    group = Column(String)
     field = Column(String)
     description = Column(String, nullable=True)
