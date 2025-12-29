@@ -151,9 +151,14 @@ def main():
         print(f'Processing file: {file}')
         
         pdf = pdfplumber.open(f'pdf/{file}')
-        page = pdf.pages[0]
-        text = page.extract_text()
         
+        # Extract text from all pages
+        text = ""
+        for page in pdf.pages:
+            text += page.extract_text() + "\n"
+        
+        print(text)
+        exit()
         # Get header and item data
         header_data = get_data_header(text)
         items = get_data_item(text)
